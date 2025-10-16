@@ -24,9 +24,10 @@ An AI-powered video transcription and summarization tool that supports multiple 
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.9+
 - FFmpeg
 - Optional: OpenAI API key (for AI summary features)
+- Optional: UV (recommended for dependency management)
 
 ### Installation
 
@@ -59,7 +60,31 @@ docker build -t ai-video-transcriber .
 docker run -p 8000:8000 -e OPENAI_API_KEY="your_api_key_here" ai-video-transcriber
 ```
 
-#### Method 3: Manual Installation
+#### Method 3: Using UV (Recommended)
+
+1. **Install UV**
+```bash
+# macOS and Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Or using pip
+pip install uv
+```
+
+2. **Install Project Dependencies**
+```bash
+# Clone the repository
+git clone https://github.com/wendy7756/AI-Video-Transcriber.git
+cd AI-Video-Transcriber
+
+# Install dependencies using uv
+uv sync
+```
+
+#### Method 4: Manual Installation
 
 1. **Install Python Dependencies**
 ```bash
@@ -91,6 +116,14 @@ export OPENAI_API_KEY="your_api_key_here"
 
 ### Start the Service
 
+#### Using UV (Recommended)
+
+```bash
+uv run python start.py
+```
+
+#### Using Traditional Python
+
 ```bash
 python3 start.py
 ```
@@ -102,6 +135,10 @@ After the service starts, open your browser and visit `http://localhost:8000`
 To avoid SSE disconnections during long processing, start in production mode (hot-reload disabled):
 
 ```bash
+# Using UV
+uv run python start.py --prod
+
+# Using Traditional Python
 python3 start.py --prod
 ```
 
@@ -110,6 +147,12 @@ This keeps the SSE connection stable throughout long tasks (30–60+ min).
 #### Run with explicit env (example)
 
 ```bash
+# Using UV
+export OPENAI_API_KEY=your_api_key_here
+# export OPENAI_BASE_URL=https://oneapi.basevec.com/v1   # if using a custom endpoint
+uv run python start.py --prod
+
+# Using Traditional Python
 source .venv/bin/activate
 export OPENAI_API_KEY=your_api_key_here
 # export OPENAI_BASE_URL=https://oneapi.basevec.com/v1   # if using a custom endpoint
@@ -173,8 +216,12 @@ AI-Video-Transcriber/
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
 | `OPENAI_API_KEY` | OpenAI API key | - | Yes (for AI features) |
+| `OPENAI_BASE_URL` | Custom OpenAI-compatible endpoint | `https://oneapi.basevec.com/v1` | No |
+| `OPENAI_MODEL_FAST` | AI model for fast tasks | `deepseek-chat` | No |
+| `OPENAI_MODEL_SMART` | AI model for smart tasks | `deepseek-chat` | No |
 | `HOST` | Server address | `0.0.0.0` | No |
 | `PORT` | Server port | `8000` | No |
+| `PRODUCTION_MODE` | Production mode (disables hot-reload) | `false` | No |
 | `WHISPER_MODEL_SIZE` | Whisper model size | `base` | No |
 
 ### Whisper Model Size Options
