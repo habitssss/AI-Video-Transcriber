@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ai-video-transcriber"
+version = "1.0.0"
+description = "一款开源的AI视频转录和摘要工具，支持YouTube、Bilibili、抖音等30+平台"
+authors = [
+    {name = "Wendy", email = "wendy@example.com"}
+]
+readme = "README_ZH.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "python-multipart>=0.0.9",
+    "yt-dlp>=2024.12.13",
+    "faster-whisper>=1.1.0",
+    "openai>=1.51.0",
+    "pydantic>=2.7.0",
+    "aiofiles>=24.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/wendy7756/AI-Video-Transcriber"
+Repository = "https://github.com/wendy7756/AI-Video-Transcriber"
+Issues = "https://github.com/wendy7756/AI-Video-Transcriber/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend", "static"]
+
+[tool.black]
+line-length = 88
+target-version = ["py39"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.flake8]
+max-line-length = 88
+extend-ignore = ["E203", "W503"]
