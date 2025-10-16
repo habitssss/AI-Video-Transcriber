@@ -16,6 +16,7 @@
 - 🗣️ **智能转录**: 使用Faster-Whisper模型进行高精度语音转文字
 - 🤖 **AI文本优化**: 自动错别字修正、句子完整化和智能分段
 - 🌍 **多语言摘要**: 支持多种语言的智能摘要生成
+- ⚡ **实时进度**: 实时进度跟踪和状态更新
 - ⚙️ **条件式翻译**：当所选总结语言与Whisper检测到的语言不一致时，自动调用GPT‑4o生成翻译
 - 📱 **移动适配**: 完美支持移动设备
 
@@ -23,9 +24,10 @@
 
 ### 环境要求
 
-- Python 3.8+
+- Python 3.9+
 - FFmpeg
 - 可选：OpenAI API密钥（用于智能摘要功能）
+- 可选：UV（推荐用于依赖管理）
 
 ### 安装方法
 
@@ -59,7 +61,31 @@ docker build -t ai-video-transcriber .
 docker run -p 8000:8000 -e OPENAI_API_KEY="你的API密钥" ai-video-transcriber
 ```
 
-#### 方法三：手动安装
+#### 方法三：使用UV（推荐）
+
+1. **安装UV**
+```bash
+# macOS 和 Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# 或使用pip
+pip install uv
+```
+
+2. **安装项目依赖**
+```bash
+# 克隆项目
+git clone https://github.com/wendy7756/AI-Video-Transcriber.git
+cd AI-Video-Transcriber
+
+# 使用uv安装依赖
+uv sync
+```
+
+#### 方法四：手动安装
 
 1. **安装Python依赖**（建议使用虚拟环境）
 ```bash
@@ -92,9 +118,31 @@ export OPENAI_API_KEY="你的_API_Key"
 
 ### 启动服务
 
+#### 使用UV（推荐）
+
+```bash
+uv run python start.py
+```
+
+#### 使用传统Python
+
 ```bash
 python3 start.py
 ```
+
+#### 生产模式（推荐，用于长视频）
+
+为了避免长视频处理时SSE断开连接，建议在生产模式启动（禁用热重载）：
+
+```bash
+# 使用UV
+uv run python start.py --prod
+
+# 使用传统Python
+python3 start.py --prod
+```
+
+这将保持SSE连接在长任务（30-60+分钟）中稳定。
 
 服务启动后，打开浏览器访问 `http://localhost:8000`
 
@@ -118,6 +166,7 @@ python3 start.py --prod
    - AI智能转录优化（错别字修正、句子完整化、智能分段）
    - 生成选定语言的AI摘要
 5. **查看结果**: 查看优化后的转录文本和智能摘要
+    - 如果转录语言 ≠ 选择的摘要语言，会显示第三个"翻译"标签页，包含翻译后的转录文本
 6. **下载文件**: 点击下载按钮保存Markdown格式的文件
 
 ## 🛠️ 技术架构
@@ -147,13 +196,12 @@ AI-Video-Transcriber/
 │   ├── index.html          # 主页面
 │   └── app.js              # 前端逻辑
 ├── temp/                   # 临时文件目录
-├── Docker相关文件           # Docker部署
-│   ├── Dockerfile          # Docker镜像配置
-│   ├── docker-compose.yml  # Docker Compose配置
-│   └── .dockerignore       # Docker忽略规则
-├── .env.example        # 环境变量模板
-├── requirements.txt    # Python依赖
-└── start.py           # 启动脚本
+├── Dockerfile              # Docker镜像配置
+├── docker-compose.yml      # Docker Compose配置
+├── .dockerignore           # Docker忽略规则
+├── .env.example            # 环境变量模板
+├── requirements.txt        # Python依赖
+└── start.py                # 启动脚本
 
 ```
 
@@ -162,10 +210,14 @@ AI-Video-Transcriber/
 ### 环境变量
 
 | 变量名 | 描述 | 默认值 | 必需 |
-|--------|------|--------|------|
-| `OPENAI_API_KEY` | OpenAI API密钥 | - | 否 |
+|----------|-------------|---------|----------|
+| `OPENAI_API_KEY` | OpenAI API密钥 | - | AI功能必需 |
+| `OPENAI_BASE_URL` | 自定义OpenAI兼容端点 | `https://oneapi.basevec.com/v1` | 否 |
+| `OPENAI_MODEL_FAST` | 快速任务AI模型 | `deepseek-chat` | 否 |
+| `OPENAI_MODEL_SMART` | 智能任务AI模型 | `deepseek-chat` | 否 |
 | `HOST` | 服务器地址 | `0.0.0.0` | 否 |
 | `PORT` | 服务器端口 | `8000` | 否 |
+| `PRODUCTION_MODE` | 生产模式（禁用热重载） | `false` | 否 |
 | `WHISPER_MODEL_SIZE` | Whisper模型大小 | `base` | 否 |
 
 ### Whisper模型大小选项
@@ -305,6 +357,40 @@ docker pull hello-world
 
 如果问题持续存在，尝试切换到不同的网络或VPN位置。
 
+## 🎯 支持语言
+
+### 转录
+- 通过Whisper支持100+语言
+- 自动语言检测
+- 主要语言高精度
+
+### 摘要生成
+- 英语
+- 中文（简体）
+- 日语
+- 韩语
+- 西班牙语
+- 法语
+- 德语
+- 葡萄牙语
+- 俄语
+- 阿拉伯语
+- 等等...
+
+## 📈 性能提示
+
+- **硬件要求**：
+  - 最低：4GB RAM，双核CPU
+  - 推荐：8GB RAM，四核CPU
+  - 理想：16GB RAM，多核CPU，SSD存储
+
+- **处理时间估算**：
+  | 视频长度 | 预计时间 | 注意事项 |
+  |-------------|----------------|-------|
+  | 1分钟 | 30秒-1分钟 | 取决于网络和硬件 |
+  | 5分钟 | 2-5分钟 | 首次测试推荐 |
+  | 15分钟 | 5-15分钟 | 常规使用合适 |
+
 ## 🤝 贡献指南
 
 欢迎提交Issue和Pull Request！
@@ -325,3 +411,7 @@ docker pull hello-world
 ## 📞 联系方式
 
 如有问题或建议，请提交Issue或联系Wendy。
+
+## ⭐ Star History
+
+如果你觉得这个项目有帮助，请考虑给它一个star！
