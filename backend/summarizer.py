@@ -14,6 +14,10 @@ class Summarizer:
         api_key = os.getenv("OPENAI_API_KEY")
         base_url = os.getenv("OPENAI_BASE_URL")
         
+        # 从环境变量获取模型配置
+        self.model_fast = os.getenv("OPENAI_MODEL_FAST", "deepseek-chat")
+        self.model_smart = os.getenv("OPENAI_MODEL_SMART", "deepseek-chat")
+        
         if not api_key:
             logger.warning("未设置OPENAI_API_KEY环境变量，将无法使用摘要功能")
         
@@ -21,9 +25,11 @@ class Summarizer:
             if base_url:
                 self.client = openai.OpenAI(api_key=api_key, base_url=base_url)
                 logger.info(f"OpenAI客户端已初始化，使用自定义端点: {base_url}")
+                logger.info(f"使用模型: 快速模型={self.model_fast}, 智能模型={self.model_smart}")
             else:
                 self.client = openai.OpenAI(api_key=api_key)
                 logger.info("OpenAI客户端已初始化，使用默认端点")
+                logger.info(f"使用模型: 快速模型={self.model_fast}, 智能模型={self.model_smart}")
         else:
             self.client = None
         
@@ -163,7 +169,7 @@ class Summarizer:
 请特别注意修复因时间戳分割导致的句子不完整问题，并进行合理的段落划分！"""
 
         response = self.client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model=self.model_fast,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
@@ -211,7 +217,7 @@ class Summarizer:
 
             try:
                 response = self.client.chat.completions.create(
-                    model="gpt-3.5-turbo",
+                    model=self.model_fast,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}
@@ -299,7 +305,7 @@ class Summarizer:
 
         try:
             response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model=self.model_fast,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
@@ -782,7 +788,7 @@ class Summarizer:
 重新分段后的文本："""
 
             response = self.client.chat.completions.create(
-                model="gpt-4o",
+                model=self.model_smart,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -861,7 +867,7 @@ Core requirements:
 {text}"""
 
         response = self.client.chat.completions.create(
-            model="gpt-4o",
+            model=self.model_smart,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
@@ -1034,7 +1040,7 @@ Requirements:
         
         # 调用OpenAI API
         response = self.client.chat.completions.create(
-            model="gpt-4o",
+            model=self.model_smart,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
@@ -1077,7 +1083,7 @@ Avoid using any subheadings or decorative separators, output content only."""
 
             try:
                 response = self.client.chat.completions.create(
-                    model="gpt-4o",
+                    model=self.model_smart,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}
@@ -1099,10 +1105,8 @@ Avoid using any subheadings or decorative separators, output content only."""
         combined_summaries = "\n\n".join([f"[Part {idx+1}]\n" + s for idx, s in enumerate(chunk_summaries)])
 
         logger.info("正在整合最终摘要...")
-        if len(chunk_summaries) > 10:
-            final_summary = await self._integrate_hierarchical_summaries(chunk_summaries, target_language)
-        else:
-            final_summary = await self._integrate_chunk_summaries(combined_summaries, target_language)
+        # 对于大量分块，也使用相同的整合方法
+        final_summary = await self._integrate_chunk_summaries(combined_summaries, target_language)
 
         return self._format_summary_with_meta(final_summary, target_language, video_title)
 
@@ -1172,7 +1176,7 @@ Requirements:
 - Form a complete content summary"""
 
             response = self.client.chat.completions.create(
-                model="gpt-4o",
+                model=self.model_smart,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -1204,7 +1208,7 @@ Requirements:
 
         try:
             resp = self.client.chat.completions.create(
-                model="gpt-4o",
+                model=self.model_smart,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},

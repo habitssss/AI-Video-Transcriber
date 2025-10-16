@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -7,7 +7,8 @@ import tempfile
 import asyncio
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any, List
+from datetime import datetime, timezone
 import aiofiles
 import uuid
 import json
@@ -50,14 +51,29 @@ summarizer = Summarizer()
 translator = Translator()
 
 # 存储任务状态 - 使用文件持久化
-import json
 import threading
 
 TASKS_FILE = TEMP_DIR / "tasks.json"
 tasks_lock = threading.Lock()
 
-def load_tasks():
-    """加载任务状态"""
+def _current_timestamp() -> str:
+    """
+    获取当前UTC时间戳字符串。
+
+    返回:
+        str: ISO8601 格式的UTC时间戳。
+    """
+    return datetime.now(timezone.utc).isoformat()
+
+def load_tasks() -> Dict[str, Any]:
+    """
+    加载任务状态。
+
+    返回:
+        Dict[str, Any]: 从磁盘读取的任务字典，读取失败时返回空字典。
+    异常:
+        无（内部捕获IO错误以保证服务启动）。
+    """
     try:
         if TASKS_FILE.exists():
             with open(TASKS_FILE, 'r', encoding='utf-8') as f:
@@ -66,14 +82,115 @@ def load_tasks():
         pass
     return {}
 
-def save_tasks(tasks_data):
-    """保存任务状态"""
+def save_tasks(tasks_data: Dict[str, Any]) -> None:
+    """
+    将内存中的任务数据写入磁盘。
+
+    参数:
+        tasks_data (Dict[str, Any]): 需要持久化的任务字典。
+    返回:
+        None
+    异常:
+        无（内部记录错误日志，保持服务可用）。
+    """
     try:
         with tasks_lock:
-            with open(TASKS_FILE, 'w', encoding='utf-8') as f:
+            temp_path = TASKS_FILE.with_suffix(".json.tmp")
+            with open(temp_path, 'w', encoding='utf-8') as f:
                 json.dump(tasks_data, f, ensure_ascii=False, indent=2)
+            temp_path.replace(TASKS_FILE)
     except Exception as e:
         logger.error(f"保存任务状态失败: {e}")
+
+def _persist_task(task_id: str) -> Dict[str, Any]:
+    """
+    更新指定任务的更新时间并将所有任务写入磁盘。
+
+    参数:
+        task_id (str): 任务ID。
+    返回:
+        Dict[str, Any]: 更新后的任务数据。
+    异常:
+        KeyError: 当任务ID不存在时抛出。
+    """
+    if task_id not in tasks:
+        raise KeyError(f"任务 {task_id} 不存在，无法持久化")
+    tasks[task_id]["updated_at"] = _current_timestamp()
+    save_tasks(tasks)
+    return tasks[task_id]
+
+def _ensure_task_metadata(task_id: str) -> Dict[str, Any]:
+    """
+    确保任务记录包含历史功能所需的元数据。
+
+    参数:
+        task_id (str): 任务ID。
+    返回:
+        Dict[str, Any]: 补全后的任务数据。
+    异常:
+        KeyError: 当任务ID不存在时抛出。
+    """
+    if task_id not in tasks:
+        raise KeyError(f"任务 {task_id} 不存在，无法补全元数据")
+
+    task = tasks[task_id]
+    mutated = False
+
+    if "created_at" not in task:
+        task["created_at"] = task.get("updated_at") or _current_timestamp()
+        mutated = True
+    if "updated_at" not in task:
+        task["updated_at"] = task["created_at"]
+        mutated = True
+    if task.get("status") == "completed" and not task.get("finished_at"):
+        task["finished_at"] = task.get("updated_at")
+        mutated = True
+    if "has_translation" not in task:
+        task["has_translation"] = bool(
+            task.get("translation")
+            or task.get("translation_path")
+            or task.get("translation_filename")
+        )
+        mutated = True
+    if "script_filename" not in task and task.get("script_path"):
+        try:
+            task["script_filename"] = Path(task["script_path"]).name
+            mutated = True
+        except Exception:
+            logger.warning(f"无法解析脚本文件名: {task.get('script_path')}")
+    if "summary_filename" not in task and task.get("summary_path"):
+        try:
+            task["summary_filename"] = Path(task["summary_path"]).name
+            mutated = True
+        except Exception:
+            logger.warning(f"无法解析摘要文件名: {task.get('summary_path')}")
+    if "translation_filename" not in task and task.get("translation_path"):
+        try:
+            task["translation_filename"] = Path(task["translation_path"]).name
+            mutated = True
+        except Exception:
+            logger.warning(f"无法解析翻译文件名: {task.get('translation_path')}")
+
+    if mutated:
+        save_tasks(tasks)
+
+    return task
+
+def _validate_history_filename(filename: str) -> None:
+    """
+    校验待删除的历史文件名，确保不存在路径遍历风险。
+
+    参数:
+        filename (str): 需要校验的文件名。
+    返回:
+        None
+    异常:
+        HTTPException: 当文件名不合法时抛出400错误。
+    """
+    if not filename:
+        return
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="文件名格式无效")
 
 async def broadcast_task_update(task_id: str, task_data: dict):
     """向所有连接的SSE客户端广播任务状态更新"""
@@ -144,6 +261,7 @@ async def process_video(
         processing_urls.add(url)
         
         # 初始化任务状态
+        timestamp_now = _current_timestamp()
         tasks[task_id] = {
             "status": "processing",
             "progress": 0,
@@ -151,7 +269,11 @@ async def process_video(
             "script": None,
             "summary": None,
             "error": None,
-            "url": url  # 保存URL用于去重
+            "url": url,  # 保存URL用于去重
+            "created_at": timestamp_now,
+            "updated_at": timestamp_now,
+            "finished_at": None,
+            "has_translation": False
         }
         save_tasks(tasks)
         
@@ -176,7 +298,7 @@ async def process_video_task(task_id: str, url: str, summary_language: str):
             "progress": 10,
             "message": "正在下载视频..."
         })
-        save_tasks(tasks)
+        _persist_task(task_id)
         await broadcast_task_update(task_id, tasks[task_id])
         
         # 添加短暂延迟确保状态更新
@@ -188,7 +310,7 @@ async def process_video_task(task_id: str, url: str, summary_language: str):
             "progress": 15,
             "message": "正在解析视频信息..."
         })
-        save_tasks(tasks)
+        _persist_task(task_id)
         await broadcast_task_update(task_id, tasks[task_id])
         
         # 下载并转换视频
@@ -199,7 +321,7 @@ async def process_video_task(task_id: str, url: str, summary_language: str):
             "progress": 35,
             "message": "视频下载完成，准备转录..."
         })
-        save_tasks(tasks)
+        _persist_task(task_id)
         await broadcast_task_update(task_id, tasks[task_id])
         
         # 更新状态：转录中
@@ -207,7 +329,7 @@ async def process_video_task(task_id: str, url: str, summary_language: str):
             "progress": 40,
             "message": "正在转录音频..."
         })
-        save_tasks(tasks)
+        _persist_task(task_id)
         await broadcast_task_update(task_id, tasks[task_id])
         
         # 转录音频
@@ -227,7 +349,7 @@ async def process_video_task(task_id: str, url: str, summary_language: str):
             tasks[task_id].update({
                 "raw_script_file": raw_md_filename
             })
-            save_tasks(tasks)
+            _persist_task(task_id)
             await broadcast_task_update(task_id, tasks[task_id])
         except Exception as e:
             logger.error(f"保存原始转录Markdown失败: {e}")
@@ -237,7 +359,7 @@ async def process_video_task(task_id: str, url: str, summary_language: str):
             "progress": 55,
             "message": "正在优化转录文本..."
         })
-        save_tasks(tasks)
+        _persist_task(task_id)
         await broadcast_task_update(task_id, tasks[task_id])
         
         # 优化转录文本：修正错别字，按含义分段
@@ -261,7 +383,7 @@ async def process_video_task(task_id: str, url: str, summary_language: str):
                 "progress": 70,
                 "message": "正在生成翻译..."
             })
-            save_tasks(tasks)
+            _persist_task(task_id)
             await broadcast_task_update(task_id, tasks[task_id])
             
             # 翻译转录文本
@@ -281,7 +403,7 @@ async def process_video_task(task_id: str, url: str, summary_language: str):
             "progress": 80,
             "message": "正在生成摘要..."
         })
-        save_tasks(tasks)
+        _persist_task(task_id)
         await broadcast_task_update(task_id, tasks[task_id])
         
         # 生成摘要
@@ -324,7 +446,11 @@ async def process_video_task(task_id: str, url: str, summary_language: str):
             "short_id": short_id,
             "safe_title": safe_title,
             "detected_language": detected_language,
-            "summary_language": summary_language
+            "summary_language": summary_language,
+            "finished_at": _current_timestamp(),
+            "has_translation": bool(translation_path),
+            "script_filename": script_path.name,
+            "summary_filename": summary_filename
         }
         
         # 如果有翻译，添加翻译信息
@@ -332,11 +458,12 @@ async def process_video_task(task_id: str, url: str, summary_language: str):
             task_result.update({
                 "translation": translation_with_title,
                 "translation_path": str(translation_path),
-                "translation_filename": translation_filename
+                "translation_filename": translation_filename,
+                "has_translation": True
             })
         
         tasks[task_id].update(task_result)
-        save_tasks(tasks)
+        _persist_task(task_id)
         logger.info(f"任务完成，准备广播最终状态: {task_id}")
         await broadcast_task_update(task_id, tasks[task_id])
         logger.info(f"最终状态已广播: {task_id}")
@@ -365,7 +492,7 @@ async def process_video_task(task_id: str, url: str, summary_language: str):
             "error": str(e),
             "message": f"处理失败: {str(e)}"
         })
-        save_tasks(tasks)
+        _persist_task(task_id)
         await broadcast_task_update(task_id, tasks[task_id])
 
 @app.get("/api/task-status/{task_id}")
@@ -377,6 +504,147 @@ async def get_task_status(task_id: str):
         raise HTTPException(status_code=404, detail="任务不存在")
     
     return tasks[task_id]
+
+@app.get("/api/history")
+async def list_history(
+    page: int = Query(1, ge=1, description="页码（从1开始）"),
+    limit: int = Query(20, ge=1, description="每页条目数（最大100）")
+):
+    """
+    获取已完成任务的历史列表。
+
+    参数:
+        page (int): 页码，从1开始。
+        limit (int): 每页条目数，最大100。
+    返回:
+        dict: 包含分页信息与历史列表的字典。
+    异常:
+        HTTPException: 当limit超过100或参数异常时抛出。
+    """
+    if limit > 100:
+        raise HTTPException(status_code=400, detail="limit 最大允许值为 100")
+
+    history_candidates: List = []
+    for tid, task_data in tasks.items():
+        if task_data.get("status") == "completed":
+            completed_task = _ensure_task_metadata(tid)
+            history_candidates.append((tid, completed_task))
+
+    history_candidates.sort(
+        key=lambda item: item[1].get("finished_at") or item[1].get("created_at") or "",
+        reverse=True
+    )
+
+    total = len(history_candidates)
+    start_index = (page - 1) * limit
+    end_index = start_index + limit
+    sliced = history_candidates[start_index:end_index]
+
+    items = []
+    for tid, task_data in sliced:
+        items.append({
+            "task_id": tid,
+            "url": task_data.get("url"),
+            "video_title": task_data.get("video_title"),
+            "created_at": task_data.get("created_at"),
+            "finished_at": task_data.get("finished_at"),
+            "detected_language": task_data.get("detected_language"),
+            "summary_language": task_data.get("summary_language"),
+            "has_translation": task_data.get("has_translation", False)
+        })
+
+    return {
+        "page": page,
+        "limit": limit,
+        "total": total,
+        "items": items
+    }
+
+@app.get("/api/history/{task_id}")
+async def get_history_detail(task_id: str):
+    """
+    获取指定任务的完整历史详情。
+
+    参数:
+        task_id (str): 任务ID。
+    返回:
+        dict: 包含脚本、摘要、翻译及下载信息的字典。
+    异常:
+        HTTPException: 当任务不存在或未完成时抛出404。
+    """
+    if task_id not in tasks or tasks[task_id].get("status") != "completed":
+        raise HTTPException(status_code=404, detail="历史记录不存在或任务未完成")
+
+    task_data = _ensure_task_metadata(task_id)
+
+    return {
+        "task_id": task_id,
+        "url": task_data.get("url"),
+        "video_title": task_data.get("video_title"),
+        "created_at": task_data.get("created_at"),
+        "finished_at": task_data.get("finished_at"),
+        "script": task_data.get("script"),
+        "summary": task_data.get("summary"),
+        "translation": task_data.get("translation"),
+        "detected_language": task_data.get("detected_language"),
+        "summary_language": task_data.get("summary_language"),
+        "raw_script_file": task_data.get("raw_script_file"),
+        "script_filename": task_data.get("script_filename"),
+        "summary_filename": task_data.get("summary_filename"),
+        "translation_filename": task_data.get("translation_filename"),
+        "has_translation": task_data.get("has_translation", False)
+    }
+
+@app.delete("/api/history/{task_id}")
+async def delete_history_record(task_id: str):
+    """
+    删除指定历史记录以及关联的Markdown文件。
+
+    参数:
+        task_id (str): 历史记录对应的任务ID。
+    返回:
+        dict: 删除结果信息。
+    异常:
+        HTTPException: 当历史记录不存在或文件名非法时抛出。
+    """
+    if task_id not in tasks or tasks[task_id].get("status") != "completed":
+        raise HTTPException(status_code=404, detail="历史记录不存在或任务未完成")
+
+    task_data = tasks[task_id]
+    filenames = set()
+
+    for filename_key in [
+        "script_filename",
+        "summary_filename",
+        "translation_filename",
+        "raw_script_file"
+    ]:
+        filename = task_data.get(filename_key)
+        if filename:
+            _validate_history_filename(filename)
+            filenames.add(filename)
+
+    for path_key in ["script_path", "summary_path", "translation_path"]:
+        candidate_path = task_data.get(path_key)
+        if candidate_path:
+            try:
+                candidate_name = Path(candidate_path).name
+                _validate_history_filename(candidate_name)
+                filenames.add(candidate_name)
+            except Exception:
+                logger.warning(f"无法解析待删除文件路径: {candidate_path}")
+
+    for filename in filenames:
+        file_path = TEMP_DIR / filename
+        try:
+            if file_path.exists():
+                file_path.unlink()
+        except Exception as exc:
+            logger.warning(f"删除历史文件失败 {file_path}: {exc}")
+
+    del tasks[task_id]
+    save_tasks(tasks)
+    return {"message": "历史记录已删除"}
 
 @app.get("/api/task-stream/{task_id}")
 async def task_stream(task_id: str):
@@ -492,6 +760,7 @@ async def delete_task(task_id: str):
     
     # 删除任务记录
     del tasks[task_id]
+    save_tasks(tasks)
     return {"message": "任务已取消并删除"}
 
 @app.get("/api/tasks/active")

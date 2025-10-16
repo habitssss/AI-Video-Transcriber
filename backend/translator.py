@@ -12,10 +12,15 @@ class Translator:
         self.client = None
         self._init_openai_client()
         
+        # 从环境变量获取模型配置
+        import os
+        self.model_fast = os.getenv("OPENAI_MODEL_FAST", "deepseek-chat")
+        self.model_smart = os.getenv("OPENAI_MODEL_SMART", "deepseek-chat")
+        
         # 语言映射
         self.language_map = {
             "zh": "中文（简体）",
-            "zh-tw": "中文（繁体）", 
+            "zh-tw": "中文（繁体）",
             "en": "English",
             "ja": "日本語",
             "ko": "한국어",
@@ -194,7 +199,7 @@ class Translator:
 
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4o",
+                model=self.model_smart,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -238,7 +243,7 @@ class Translator:
 
             try:
                 response = self.client.chat.completions.create(
-                    model="gpt-4o",
+                    model=self.model_smart,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}

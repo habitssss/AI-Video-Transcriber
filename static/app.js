@@ -4,6 +4,14 @@ class VideoTranscriber {
         this.eventSource = null;
         this.apiBase = 'http://localhost:8000/api';
         this.currentLanguage = 'en'; // 默认英文
+        this.currentResultInfo = null; // 当前展示的结果详情
+        this.historyVisible = false;
+        this.historyState = {
+            page: 1,
+            limit: 20,
+            total: 0,
+            items: []
+        };
         
         // 智能进度模拟相关
         this.smartProgress = {
@@ -49,7 +57,23 @@ class VideoTranscriber {
                 error_invalid_file_type: "Invalid file type",
                 error_file_not_found: "File not found",
                 error_download_failed: "Download failed: ",
-                error_no_file_to_download: "No file available for download"
+                error_no_file_to_download: "No file available for download",
+                history_toggle_show: "View History",
+                history_toggle_hide: "Hide History",
+                history_title: "History",
+                history_refresh: "Refresh",
+                history_empty: "No history records yet",
+                history_loading: "Loading history...",
+                history_view_detail: "View Details",
+                history_delete: "Delete",
+                history_delete_failed: "Failed to delete history: ",
+                history_detail_failed: "Failed to load history detail: ",
+                history_load_error: "Failed to load history: ",
+                history_load_more: "Load More",
+                history_finished_at: "Finished At",
+                history_language_label: "Language",
+                history_has_translation: "With Translation",
+                history_no_title: "Untitled Video"
             },
             zh: {
                 title: "AI视频转录器",
@@ -82,7 +106,23 @@ class VideoTranscriber {
                 error_invalid_file_type: "无效的文件类型",
                 error_file_not_found: "文件不存在",
                 error_download_failed: "下载文件失败: ",
-                error_no_file_to_download: "没有可下载的文件"
+                error_no_file_to_download: "没有可下载的文件",
+                history_toggle_show: "查看历史记录",
+                history_toggle_hide: "收起历史记录",
+                history_title: "历史记录",
+                history_refresh: "刷新",
+                history_empty: "暂无历史记录",
+                history_loading: "正在加载历史记录...",
+                history_view_detail: "查看详情",
+                history_delete: "删除",
+                history_delete_failed: "删除历史记录失败: ",
+                history_detail_failed: "获取历史详情失败: ",
+                history_load_error: "加载历史记录失败: ",
+                history_load_more: "加载更多",
+                history_finished_at: "完成时间",
+                history_language_label: "语言",
+                history_has_translation: "含翻译内容",
+                history_no_title: "未命名视频"
             }
         };
         
@@ -117,6 +157,17 @@ class VideoTranscriber {
         this.downloadTranslationBtn = document.getElementById('downloadTranslation');
         this.downloadSummaryBtn = document.getElementById('downloadSummary');
         this.translationTabBtn = document.getElementById('translationTabBtn');
+        this.resultsVideoTitle = document.getElementById('resultsVideoTitle');
+
+        // 历史记录相关元素
+        this.historyToggleBtn = document.getElementById('historyToggleBtn');
+        this.historySection = document.getElementById('historySection');
+        this.historyList = document.getElementById('historyList');
+        this.historyEmpty = document.getElementById('historyEmpty');
+        this.historyLoading = document.getElementById('historyLoading');
+        this.historyRefreshBtn = document.getElementById('historyRefresh');
+        this.historyLoadMoreBtn = document.getElementById('historyLoadMore');
+        this.historyError = document.getElementById('historyError');
         
         // 调试：检查元素是否正确初始化
         console.log('[DEBUG] 🔧 初始化检查:', {
@@ -170,6 +221,32 @@ class VideoTranscriber {
         this.langToggle.addEventListener('click', () => {
             this.toggleLanguage();
         });
+
+        // 历史功能事件
+        if (this.historyToggleBtn) {
+            this.historyToggleBtn.addEventListener('click', () => {
+                this.toggleHistorySection();
+            });
+        }
+
+        if (this.historyRefreshBtn) {
+            this.historyRefreshBtn.addEventListener('click', () => {
+                this.loadHistory(1, false);
+            });
+        }
+
+        if (this.historyLoadMoreBtn) {
+            this.historyLoadMoreBtn.addEventListener('click', () => {
+                const nextPage = Number(this.historyLoadMoreBtn.dataset.nextPage || (this.historyState.page + 1));
+                this.loadHistory(nextPage, true);
+            });
+        }
+
+        if (this.historyList) {
+            this.historyList.addEventListener('click', (event) => {
+                this.handleHistoryListClick(event);
+            });
+        }
     }
     
     initializeLanguage() {
@@ -191,6 +268,8 @@ class VideoTranscriber {
         
         // 更新页面文本
         this.updatePageText();
+        this.refreshHistoryTexts();
+        this.updateHistoryToggleLabel();
         
         // 更新HTML lang属性
         document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
@@ -216,6 +295,282 @@ class VideoTranscriber {
             element.placeholder = this.t(key);
         });
     }
+
+    updateHistoryToggleLabel() {
+        if (!this.historyToggleBtn) {
+            return;
+        }
+        const labelKey = this.historyVisible ? 'history_toggle_hide' : 'history_toggle_show';
+        const labelSpan = this.historyToggleBtn.querySelector('span[data-i18n]');
+        if (labelSpan) {
+            labelSpan.setAttribute('data-i18n', labelKey);
+            labelSpan.textContent = this.t(labelKey);
+        }
+    }
+    
+    toggleHistorySection() {
+        this.historyVisible = !this.historyVisible;
+        if (this.historySection) {
+            this.historySection.style.display = this.historyVisible ? 'block' : 'none';
+        }
+        this.updateHistoryToggleLabel();
+        if (this.historyVisible && (!this.historyState.items || this.historyState.items.length === 0)) {
+            this.loadHistory(1, false);
+        }
+    }
+    
+    setHistoryLoading(loading) {
+        if (this.historyLoading) {
+            this.historyLoading.style.display = loading ? 'block' : 'none';
+        }
+        if (this.historyRefreshBtn) {
+            this.historyRefreshBtn.disabled = loading;
+        }
+        if (this.historyLoadMoreBtn) {
+            this.historyLoadMoreBtn.disabled = loading;
+        }
+    }
+    
+    clearHistoryError() {
+        if (this.historyError) {
+            this.historyError.style.display = 'none';
+            this.historyError.textContent = '';
+        }
+    }
+    
+    showHistoryError(message) {
+        if (this.historyError) {
+            this.historyError.textContent = message;
+            this.historyError.style.display = 'block';
+        } else {
+            this.showError(message);
+        }
+    }
+    
+    async loadHistory(page = 1, append = false) {
+        if (!this.historySection) {
+            return;
+        }
+        
+        try {
+            this.clearHistoryError();
+            this.setHistoryLoading(true);
+            
+            const response = await fetch(`${this.apiBase}/history?page=${page}&limit=${this.historyState.limit}`);
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || response.statusText || 'Request failed');
+            }
+            
+            const data = await response.json();
+            const items = Array.isArray(data.items) ? data.items : [];
+            const currentPage = data.page || page;
+            const limit = data.limit || this.historyState.limit;
+            const total = data.total || 0;
+            
+            this.historyState.page = currentPage;
+            this.historyState.limit = limit;
+            this.historyState.total = total;
+            
+            if (append) {
+                this.historyState.items = (this.historyState.items || []).concat(items);
+                this.renderHistoryList(items, true);
+            } else {
+                this.historyState.items = items;
+                this.renderHistoryList(this.historyState.items, false);
+            }
+            
+            const hasMore = currentPage * limit < total;
+            this.updateHistoryLoadMoreButton(hasMore, currentPage + 1);
+        } catch (error) {
+            console.error('加载历史失败:', error);
+            this.showHistoryError(this.t('history_load_error') + (error.message || ''));
+        } finally {
+            this.setHistoryLoading(false);
+            if (this.historyEmpty) {
+                const length = (this.historyState.items || []).length;
+                this.historyEmpty.style.display = length === 0 ? 'block' : 'none';
+            }
+        }
+    }
+    
+    renderHistoryList(items, append = false) {
+        if (!this.historyList) {
+            return;
+        }
+        
+        const listItems = append ? items : (items || []);
+        if (!append) {
+            this.historyList.innerHTML = '';
+        }
+        
+        listItems.forEach(item => {
+            if (!item || !item.task_id) {
+                return;
+            }
+            const card = this.createHistoryItemElement(item);
+            this.historyList.appendChild(card);
+        });
+    }
+    
+    createHistoryItemElement(item) {
+        const card = document.createElement('div');
+        card.className = 'history-item';
+        const safeTitle = this.escapeHtml(item.video_title || this.t('history_no_title'));
+        const finishedTime = this.formatDate(item.finished_at || item.created_at);
+        const languageLabel = this.t('history_language_label');
+        const languageDisplay = item.summary_language
+            ? `${item.detected_language || '-'} -> ${item.summary_language}`
+            : (item.detected_language || '-');
+        
+        card.innerHTML = `
+            <div class="history-item-header">
+                <div class="history-title" title="${safeTitle}">${safeTitle}</div>
+                ${item.has_translation ? `<span class="history-badge">${this.t('history_has_translation')}</span>` : ''}
+            </div>
+            <div class="history-meta">
+                <span><i class="fas fa-calendar-check"></i> ${this.t('history_finished_at')}: ${finishedTime}</span>
+                <span><i class="fas fa-language"></i> ${languageLabel}: ${languageDisplay}</span>
+            </div>
+            <div class="history-actions">
+                <button class="btn btn-secondary" data-action="view" data-task="${item.task_id}">
+                    <i class="fas fa-eye"></i> ${this.t('history_view_detail')}
+                </button>
+                <button class="btn btn-secondary" data-action="delete" data-task="${item.task_id}">
+                    <i class="fas fa-trash"></i> ${this.t('history_delete')}
+                </button>
+            </div>
+        `;
+        
+        return card;
+    }
+    
+    formatDate(value) {
+        if (!value) {
+            return '-';
+        }
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+            return value;
+        }
+        const locale = this.currentLanguage === 'zh' ? 'zh-CN' : 'en-US';
+        return date.toLocaleString(locale);
+    }
+    
+    escapeHtml(text) {
+        if (text === undefined || text === null) {
+            return '';
+        }
+        return String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+    
+    handleHistoryListClick(event) {
+        const viewButton = event.target.closest('[data-action="view"]');
+        const deleteButton = event.target.closest('[data-action="delete"]');
+        
+        if (viewButton) {
+            const taskId = viewButton.getAttribute('data-task');
+            this.loadHistoryDetail(taskId);
+            return;
+        }
+        
+        if (deleteButton) {
+            const taskId = deleteButton.getAttribute('data-task');
+            this.deleteHistoryItem(taskId);
+        }
+    }
+    
+    async loadHistoryDetail(taskId) {
+        if (!taskId) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`${this.apiBase}/history/${taskId}`);
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || response.statusText || 'Request failed');
+            }
+            
+            const data = await response.json();
+            this.currentTaskId = taskId;
+            this.currentResultInfo = data;
+            this.hideError();
+            this.showResults(
+                data.script,
+                data.summary,
+                data.video_title,
+                data.translation,
+                data.detected_language,
+                data.summary_language,
+                data
+            );
+            this.switchTab('script');
+        } catch (error) {
+            console.error('获取历史详情失败:', error);
+            this.showHistoryError(this.t('history_detail_failed') + (error.message || ''));
+        }
+    }
+    
+    async deleteHistoryItem(taskId) {
+        if (!taskId) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`${this.apiBase}/history/${taskId}`, {
+                method: 'DELETE'
+            });
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || response.statusText || 'Request failed');
+            }
+            
+            if (this.currentResultInfo && this.currentResultInfo.task_id === taskId) {
+                this.currentResultInfo = null;
+                this.currentTaskId = null;
+                this.hideResults();
+            }
+            
+            await this.loadHistory(1, false);
+        } catch (error) {
+            console.error('删除历史失败:', error);
+            this.showHistoryError(this.t('history_delete_failed') + (error.message || ''));
+        }
+    }
+    
+    updateHistoryLoadMoreButton(hasMore, nextPage) {
+        if (!this.historyLoadMoreBtn) {
+            return;
+        }
+        if (hasMore) {
+            this.historyLoadMoreBtn.style.display = 'inline-flex';
+            this.historyLoadMoreBtn.dataset.nextPage = nextPage;
+            this.historyLoadMoreBtn.disabled = false;
+        } else {
+            this.historyLoadMoreBtn.style.display = 'none';
+            this.historyLoadMoreBtn.dataset.nextPage = '';
+        }
+    }
+    
+    refreshHistoryTexts() {
+        if (!this.historyList) {
+            return;
+        }
+        const items = this.historyState.items || [];
+        if (items.length === 0) {
+            if (this.historyEmpty) {
+                this.historyEmpty.textContent = this.t('history_empty');
+            }
+            return;
+        }
+        this.renderHistoryList(items, false);
+    }
     
     async startTranscription() {
         // 立即禁用按钮，防止重复点击
@@ -230,6 +585,8 @@ class VideoTranscriber {
             this.showError(this.t('error_invalid_url'));
             return;
         }
+        
+        this.currentResultInfo = null;
         
         try {
             // 立即禁用按钮和隐藏错误
@@ -307,7 +664,16 @@ class VideoTranscriber {
                     this.stopSSE();
                     this.setLoading(false);
                     this.hideProgress();
-                    this.showResults(task.script, task.summary, task.video_title, task.translation, task.detected_language, task.summary_language);
+                    const resultInfo = Object.assign({ task_id: this.currentTaskId }, task);
+                    this.showResults(
+                        task.script,
+                        task.summary,
+                        task.video_title,
+                        task.translation,
+                        task.detected_language,
+                        task.summary_language,
+                        resultInfo
+                    );
                 } else if (task.status === 'error') {
                     console.log('[DEBUG] ❌ 任务失败:', task.error);
                     this.stopSmartProgress(); // 停止智能进度模拟
@@ -336,7 +702,16 @@ class VideoTranscriber {
                             this.stopSmartProgress();
                             this.setLoading(false);
                             this.hideProgress();
-                            this.showResults(task.script, task.summary, task.video_title, task.translation, task.detected_language, task.summary_language);
+                            const resultInfo = Object.assign({ task_id: this.currentTaskId }, task);
+                            this.showResults(
+                                task.script,
+                                task.summary,
+                                task.video_title,
+                                task.translation,
+                                task.detected_language,
+                                task.summary_language,
+                                resultInfo
+                            );
                             return;
                         }
                     }
@@ -574,7 +949,24 @@ class VideoTranscriber {
         this.progressSection.style.display = 'none';
     }
     
-    showResults(script, summary, videoTitle = null, translation = null, detectedLanguage = null, summaryLanguage = null) {
+    showResults(script, summary, videoTitle = null, translation = null, detectedLanguage = null, summaryLanguage = null, resultInfo = null) {
+
+        if (resultInfo) {
+            this.currentResultInfo = resultInfo;
+            if (resultInfo.task_id) {
+                this.currentTaskId = resultInfo.task_id;
+            }
+        }
+
+        if (this.resultsVideoTitle) {
+            if (videoTitle) {
+                this.resultsVideoTitle.textContent = videoTitle;
+                this.resultsVideoTitle.style.display = 'block';
+            } else {
+                this.resultsVideoTitle.textContent = this.t('history_no_title');
+                this.resultsVideoTitle.style.display = 'block';
+            }
+        }
 
         // 调试日志：检查翻译相关参数
         console.log('[DEBUG] 🔍 showResults参数:', {
@@ -594,7 +986,7 @@ class VideoTranscriber {
         this.summaryContent.innerHTML = safeSummary ? marked.parse(safeSummary) : '';
         
         // 处理翻译
-        const shouldShowTranslation = safeTranslation && detectedLanguage && summaryLanguage && detectedLanguage !== summaryLanguage;
+        const shouldShowTranslation = Boolean(safeTranslation);
         
         console.log('[DEBUG] 🌐 翻译显示判断:', {
             safeTranslation: !!safeTranslation,
@@ -649,6 +1041,9 @@ class VideoTranscriber {
             if (this.downloadTranslationBtn) {
                 this.downloadTranslationBtn.style.display = 'none';
             }
+            if (this.translationContent) {
+                this.translationContent.innerHTML = '';
+            }
         }
         
         // 显示结果区域
@@ -665,6 +1060,10 @@ class VideoTranscriber {
     
     hideResults() {
         this.resultsSection.style.display = 'none';
+        if (this.resultsVideoTitle) {
+            this.resultsVideoTitle.textContent = '';
+            this.resultsVideoTitle.style.display = 'none';
+        }
     }
     
     switchTab(tabName) {
@@ -682,60 +1081,92 @@ class VideoTranscriber {
         }
     }
     
-    async downloadFile(fileType) {
+    extractFilename(pathValue) {
+        if (!pathValue) {
+            return null;
+        }
+        const normalized = String(pathValue);
+        if (normalized.includes('/')) {
+            return normalized.split('/').pop();
+        }
+        if (normalized.includes('\\')) {
+            return normalized.split('\\').pop();
+        }
+        return normalized;
+    }
+
+    triggerDownload(filename) {
+        const encodedFilename = encodeURIComponent(filename);
+        const link = document.createElement('a');
+        link.href = `${this.apiBase}/download/${encodedFilename}`;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    async ensureCurrentResultInfo() {
+        if (this.currentResultInfo) {
+            return this.currentResultInfo;
+        }
         if (!this.currentTaskId) {
+            return null;
+        }
+        try {
+            const taskResp = await fetch(`${this.apiBase}/task-status/${this.currentTaskId}`);
+            if (taskResp.ok) {
+                const taskData = await taskResp.json();
+                taskData.task_id = this.currentTaskId;
+                this.currentResultInfo = taskData;
+                return taskData;
+            }
+        } catch (error) {
+            console.error('获取任务状态失败:', error);
+        }
+        try {
+            const historyResp = await fetch(`${this.apiBase}/history/${this.currentTaskId}`);
+            if (historyResp.ok) {
+                const historyData = await historyResp.json();
+                this.currentResultInfo = historyData;
+                return historyData;
+            }
+        } catch (error) {
+            console.error('获取历史详情失败:', error);
+        }
+        return null;
+    }
+
+    async downloadFile(fileType) {
+        const resultInfo = await this.ensureCurrentResultInfo();
+        if (!resultInfo) {
             this.showError(this.t('error_no_file_to_download'));
             return;
         }
-        
+
+        this.currentResultInfo = resultInfo;
+        let filename = null;
+
         try {
-            // 首先获取任务状态，获得实际文件名
-            const taskResponse = await fetch(`${this.apiBase}/task-status/${this.currentTaskId}`);
-            if (!taskResponse.ok) {
-                throw new Error('获取任务状态失败');
-            }
-            
-            const taskData = await taskResponse.json();
-            let filename;
-            
-            // 根据文件类型获取对应的文件名
-            switch(fileType) {
+            switch (fileType) {
                 case 'script':
-                    if (taskData.script_path) {
-                        filename = taskData.script_path.split('/').pop(); // 获取文件名部分
-                    } else {
-                        filename = `transcript_${taskData.safe_title || 'untitled'}_${taskData.short_id || 'unknown'}.md`;
-                    }
+                    filename = resultInfo.script_filename || this.extractFilename(resultInfo.script_path);
                     break;
                 case 'summary':
-                    if (taskData.summary_path) {
-                        filename = taskData.summary_path.split('/').pop();
-                    } else {
-                        filename = `summary_${taskData.safe_title || 'untitled'}_${taskData.short_id || 'unknown'}.md`;
-                    }
+                    filename = resultInfo.summary_filename || this.extractFilename(resultInfo.summary_path);
                     break;
                 case 'translation':
-                    if (taskData.translation_path) {
-                        filename = taskData.translation_path.split('/').pop();
-                    } else if (taskData.translation_filename) {
-                        filename = taskData.translation_filename;
-                    } else {
-                        filename = `translation_${taskData.safe_title || 'untitled'}_${taskData.short_id || 'unknown'}.md`;
-                    }
+                    filename = resultInfo.translation_filename || this.extractFilename(resultInfo.translation_path);
                     break;
                 default:
                     throw new Error('未知的文件类型');
             }
-            
-            // 使用简单直接的下载方式
-            const encodedFilename = encodeURIComponent(filename);
-            const link = document.createElement('a');
-            link.href = `${this.apiBase}/download/${encodedFilename}`;
-            link.download = filename;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
+
+            if (!filename) {
+                this.showError(this.t('error_no_file_to_download'));
+                return;
+            }
+
+            this.triggerDownload(filename);
         } catch (error) {
             console.error('下载文件失败:', error);
             this.showError(this.t('error_download_failed') + error.message);

@@ -163,6 +163,114 @@
             margin-bottom: 50px;
         }
 
+        .history-toggle {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 20px;
+        }
+
+        .history-section {
+            display: none;
+            background: var(--surface-color);
+            padding: 32px;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            margin-bottom: 40px;
+        }
+
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .history-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .history-item {
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            background-color: #ffffff;
+        }
+
+        .history-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .history-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-color);
+            flex: 1;
+            word-break: break-word;
+        }
+
+        .history-badge {
+            background: rgba(74, 144, 226, 0.1);
+            color: var(--primary-color);
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .history-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        .history-meta span {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .history-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        .history-actions .btn {
+            flex: 0 0 auto;
+        }
+
+        .history-empty,
+        .history-loading {
+            text-align: center;
+            padding: 24px 16px;
+            color: var(--text-muted);
+        }
+
+        .history-error {
+            background-color: #fbeaea;
+            border-left: 4px solid var(--danger-color);
+            color: var(--danger-color);
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+
+        .history-footer {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
         .progress-header {
             display: flex;
             justify-content: space-between;
@@ -400,6 +508,19 @@
                 overflow-x: auto;
             }
 
+            .history-section {
+                padding: 24px;
+            }
+
+            .history-item-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .history-actions {
+                flex-direction: column;
+            }
+
             .language-switcher {
                 position: static;
                 text-align: center;
@@ -420,6 +541,35 @@
             </div>
             <h1><i class="fas fa-video"></i> <span data-i18n="title">AI Video Transcriber</span></h1>
             <p data-i18n="subtitle">Supports automatic transcription and AI summary for YouTube, Tiktok, Bilibili and other platforms</p>
+        </div>
+
+        <div class="history-toggle">
+            <button type="button" class="btn btn-secondary" id="historyToggleBtn">
+                <i class="fas fa-clock-rotate-left"></i>
+                <span data-i18n="history_toggle_show">View History</span>
+            </button>
+        </div>
+
+        <div id="historySection" class="history-section">
+            <div class="history-header">
+                <h3 data-i18n="history_title">History</h3>
+                <div class="history-header-actions">
+                    <button type="button" class="btn btn-secondary" id="historyRefresh">
+                        <i class="fas fa-rotate-right"></i>
+                        <span data-i18n="history_refresh">Refresh</span>
+                    </button>
+                </div>
+            </div>
+            <div id="historyError" class="history-error" style="display: none;"></div>
+            <div id="historyLoading" class="history-loading" style="display: none;" data-i18n="history_loading">Loading history...</div>
+            <div id="historyEmpty" class="history-empty" data-i18n="history_empty">No history records yet</div>
+            <div id="historyList" class="history-list"></div>
+            <div class="history-footer">
+                <button type="button" class="btn btn-secondary" id="historyLoadMore" style="display: none;">
+                    <i class="fas fa-angles-down"></i>
+                    <span data-i18n="history_load_more">Load More</span>
+                </button>
+            </div>
         </div>
 
         <!-- 输入表单 -->
@@ -486,7 +636,7 @@
         <div id="resultsSection" class="results-section">
             <div class="results-header">
                 <div class="video-title-container">
-                    <!-- 移除重复的标题显示，因为内容中已经包含标题 -->
+                    <h2 class="video-title" id="resultsVideoTitle" style="display: none;"></h2>
                 </div>
                 <div class="download-buttons">
                     <button class="btn btn-success" id="downloadScript">
