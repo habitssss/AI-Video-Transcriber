@@ -1,8 +1,9 @@
 import os
+import shutil
 import yt_dlp
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple, Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -26,17 +27,32 @@ class VideoProcessor:
             'no_warnings': True,
             'noplaylist': True,  # 强制只下载单个视频，不下载播放列表
         }
+        self.ffmpeg_path = self._detect_binary("ffmpeg")
+        self.ffprobe_path = self._detect_binary("ffprobe")
+        if not self.ffprobe_path and self.ffmpeg_path:
+            sibling_probe = Path(self.ffmpeg_path).with_name("ffprobe")
+            if sibling_probe.exists():
+                self.ffprobe_path = str(sibling_probe)
+
+        if self.ffmpeg_path:
+            # yt-dlp会同时寻找ffmpeg与ffprobe，同目录即可
+            self.ydl_opts['ffmpeg_location'] = str(Path(self.ffmpeg_path).parent)
+        else:
+            logger.warning("未显式找到ffmpeg，可执行文件需在PATH中")
     
-    async def download_and_convert(self, url: str, output_dir: Path) -> tuple[str, str]:
+    async def download_and_convert(self, url: str, output_dir: Path) -> Tuple[str, str, Dict[str, Any]]:
         """
         下载视频并转换为m4a格式
         
         Args:
-            url: 视频链接
-            output_dir: 输出目录
+            url (str): 视频或音频链接。
+            output_dir (Path): 输出目录。
             
         Returns:
-            转换后的音频文件路径
+            Tuple[str, str, Dict[str, Any]]: (音频文件路径, 标题, 视频/音频信息字典)。
+
+        Raises:
+            Exception: 当下载或转换失败时抛出。
         """
         try:
             # 创建输出目录
@@ -82,7 +98,8 @@ class VideoProcessor:
             # 校验时长，如果和源视频差异较大，尝试一次ffmpeg规范化重封装
             try:
                 import subprocess, shlex
-                probe_cmd = f"ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 {shlex.quote(audio_file)}"
+                probe_binary = shlex.quote(self.ffprobe_path or "ffprobe")
+                probe_cmd = f"{probe_binary} -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 {shlex.quote(audio_file)}"
                 out = subprocess.check_output(probe_cmd, shell=True).decode().strip()
                 actual_duration = float(out) if out else 0.0
             except Exception as _:
@@ -94,19 +111,21 @@ class VideoProcessor:
                 )
                 try:
                     fixed_path = str(output_dir / f"audio_{unique_id}_fixed.m4a")
-                    fix_cmd = f"ffmpeg -y -i {shlex.quote(audio_file)} -vn -c:a aac -b:a 160k -movflags +faststart {shlex.quote(fixed_path)}"
+                    ffmpeg_binary = shlex.quote(self.ffmpeg_path or "ffmpeg")
+                    fix_cmd = f"{ffmpeg_binary} -y -i {shlex.quote(audio_file)} -vn -c:a aac -b:a 160k -movflags +faststart {shlex.quote(fixed_path)}"
                     subprocess.check_call(fix_cmd, shell=True)
                     # 用修复后的文件替换
                     audio_file = fixed_path
                     # 重新探测
-                    out2 = subprocess.check_output(probe_cmd.replace(shlex.quote(audio_file.rsplit('.',1)[0]+'.m4a'), shlex.quote(audio_file)), shell=True).decode().strip()
+                    probe_cmd_fixed = f"{probe_binary} -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 {shlex.quote(audio_file)}"
+                    out2 = subprocess.check_output(probe_cmd_fixed, shell=True).decode().strip()
                     actual_duration2 = float(out2) if out2 else 0.0
                     logger.info(f"重封装完成，新时长≈{actual_duration2:.2f}s")
                 except Exception as e:
                     logger.error(f"重封装失败：{e}")
             
             logger.info(f"音频文件已保存: {audio_file}")
-            return audio_file, video_title
+            return audio_file, video_title, info
             
         except Exception as e:
             logger.error(f"下载视频失败: {str(e)}")
@@ -121,6 +140,9 @@ class VideoProcessor:
             
         Returns:
             视频信息字典
+
+        Raises:
+            Exception: 当信息获取失败时抛出。
         """
         try:
             with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
@@ -136,3 +158,26 @@ class VideoProcessor:
         except Exception as e:
             logger.error(f"获取视频信息失败: {str(e)}")
             raise Exception(f"获取视频信息失败: {str(e)}")
+
+    def _detect_binary(self, binary_name: str) -> Optional[str]:
+        """
+        自动探测指定可执行文件路径。
+
+        Args:
+            binary_name (str): 可执行文件名称。
+
+        Returns:
+            Optional[str]: 可执行文件路径。
+
+        Raises:
+            None.
+        """
+        candidates = [
+            shutil.which(binary_name),
+            f"/opt/homebrew/bin/{binary_name}",
+            f"/usr/local/bin/{binary_name}",
+        ]
+        for candidate in candidates:
+            if candidate and Path(candidate).exists():
+                return candidate
+        return None

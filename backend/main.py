@@ -18,6 +18,7 @@ from video_processor import VideoProcessor
 from transcriber import Transcriber
 from summarizer import Summarizer
 from translator import Translator
+from media_source import MediaSource, resolve_media_source
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -254,6 +255,11 @@ async def process_video(
                 if task.get("url") == url:
                     return {"task_id": tid, "message": "该视频正在处理中，请等待..."}
             
+        try:
+            media_source = resolve_media_source(url)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
         # 生成唯一任务ID
         task_id = str(uuid.uuid4())
         
@@ -273,12 +279,17 @@ async def process_video(
             "created_at": timestamp_now,
             "updated_at": timestamp_now,
             "finished_at": None,
-            "has_translation": False
+            "has_translation": False,
+            "content_type": media_source.content_type,
+            "provider": media_source.provider,
+            "media_display_name": media_source.display_name
         }
         save_tasks(tasks)
         
         # 创建并跟踪异步任务
-        task = asyncio.create_task(process_video_task(task_id, url, summary_language))
+        task = asyncio.create_task(
+            process_video_task(task_id, url, summary_language, media_source)
+        )
         active_tasks[task_id] = task
         
         return {"task_id": task_id, "message": "任务已创建，正在处理中..."}
@@ -287,16 +298,28 @@ async def process_video(
         logger.error(f"处理视频时出错: {str(e)}")
         raise HTTPException(status_code=500, detail=f"处理失败: {str(e)}")
 
-async def process_video_task(task_id: str, url: str, summary_language: str):
+async def process_video_task(task_id: str, url: str, summary_language: str, media_source: MediaSource):
     """
-    异步处理视频任务
+    异步处理视频或播客任务。
+
+    Args:
+        task_id (str): 任务ID。
+        url (str): 原始媒体链接。
+        summary_language (str): 摘要目标语言。
+        media_source (MediaSource): 解析后的媒体来源描述。
+
+    Returns:
+        None.
+
+    Raises:
+        Exception: 任意处理阶段失败时抛出并记录。
     """
     try:
         # 立即更新状态：开始下载视频
         tasks[task_id].update({
             "status": "processing",
             "progress": 10,
-            "message": "正在下载视频..."
+            "message": f"正在下载{media_source.display_name}..."
         })
         _persist_task(task_id)
         await broadcast_task_update(task_id, tasks[task_id])
@@ -314,12 +337,23 @@ async def process_video_task(task_id: str, url: str, summary_language: str):
         await broadcast_task_update(task_id, tasks[task_id])
         
         # 下载并转换视频
-        audio_path, video_title = await video_processor.download_and_convert(url, TEMP_DIR)
+        audio_path, video_title, media_info = await video_processor.download_and_convert(url, TEMP_DIR)
         
         # 下载完成，更新状态
+        meta_payload = {
+            "content_type": media_source.content_type,
+            "provider": media_source.provider,
+            "media_display_name": media_source.display_name,
+            "webpage_url": media_info.get("webpage_url") or url,
+            "thumbnail": media_info.get("thumbnail"),
+            "uploader": media_info.get("uploader"),
+            "source_title": media_info.get("fulltitle") or video_title,
+        }
+
         tasks[task_id].update({
             "progress": 35,
-            "message": "视频下载完成，准备转录..."
+            "message": "音频准备完成，进入转录...",
+            "media_metadata": meta_payload
         })
         _persist_task(task_id)
         await broadcast_task_update(task_id, tasks[task_id])
