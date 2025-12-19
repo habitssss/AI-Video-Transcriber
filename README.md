@@ -1,10 +1,10 @@
 <div align="center">
 
-# AI Video Transcriber
+# AI Video & Podcast Transcriber
 
 English | [中文](README_ZH.md)
 
-An AI-powered video transcription and summarization tool that supports multiple video platforms including YouTube, Tiktok, Bilibili, and 30+ platforms.
+An AI-powered video and podcast transcription tool that supports YouTube, Tiktok, Bilibili, and podcast RSS/audio links.
 
 ![Interface](en-video.png)
 
@@ -12,7 +12,7 @@ An AI-powered video transcription and summarization tool that supports multiple 
 
 ## ✨ Features
 
-- 🎥 **Multi-Platform Support**: Works with YouTube, Tiktok, Bilibili, and 30+ more
+- 🎥 **Multi-Platform Support**: Works with YouTube, Tiktok, Bilibili, and podcast RSS/audio links
 - 🗣️ **Intelligent Transcription**: High-accuracy speech-to-text using Faster-Whisper
 - 🤖 **AI Text Optimization**: Automatic typo correction, sentence completion, and intelligent paragraphing
 - 🌍 **Multi-Language Summaries**: Generate intelligent summaries in multiple languages
@@ -161,11 +161,11 @@ python3 start.py --prod
 
 ## 📖 Usage Guide
 
-1. **Enter Video URL**: Paste a video link from YouTube, Bilibili, or other supported platforms
+1. **Enter Video/Podcast URL**: Paste a video link or podcast RSS/audio link
 2. **Select Summary Language**: Choose the language for the generated summary
 3. **Start Processing**: Click the "Start" button
 4. **Monitor Progress**: Watch real-time progress through multiple stages:
-   - Video download and parsing
+   - Media download and parsing
    - Audio transcription with Faster-Whisper
    - AI-powered transcript optimization (typo correction, sentence completion, intelligent paragraphing)
    - AI summary generation in selected language
@@ -177,7 +177,7 @@ python3 start.py --prod
 
 ### Backend Stack
 - **FastAPI**: Modern Python web framework
-- **yt-dlp**: Video downloading and processing
+- **yt-dlp**: Video/audio downloading and processing
 - **Faster-Whisper**: Efficient speech transcription
 - **OpenAI API**: Intelligent text summarization
 
@@ -192,7 +192,7 @@ python3 start.py --prod
 AI-Video-Transcriber/
 ├── backend/                 # Backend code
 │   ├── main.py             # FastAPI main application
-│   ├── video_processor.py  # Video processing module
+│   ├── video_processor.py  # Media processing module
 │   ├── transcriber.py      # Transcription module
 │   ├── summarizer.py       # Summary module
 │   └── translator.py       # Translation module
@@ -237,10 +237,10 @@ AI-Video-Transcriber/
 ## 🔧 FAQ
 
 ### Q: Why is transcription slow?
-A: Transcription speed depends on video length, Whisper model size, and hardware performance. Try using smaller models (like tiny or base) to improve speed.
+A: Transcription speed depends on audio/video length, Whisper model size, and hardware performance. Try using smaller models (like tiny or base) to improve speed.
 
-### Q: Which video platforms are supported?
-A: All platforms supported by yt-dlp, including but not limited to: YouTube, TikTok, Facebook, Instagram, Twitter, Bilibili, Youku, iQiyi, Tencent Video, etc.
+### Q: Which platforms are supported?
+A: All platforms supported by yt-dlp, plus podcast RSS feeds and direct audio URLs. This includes YouTube, TikTok, Facebook, Instagram, Twitter, Bilibili, Youku, iQiyi, Tencent Video, and more.
 
 ### Q: What if the AI optimization features are unavailable?
 A: Both transcript optimization and summary generation require an OpenAI API key. Without it, the system provides the raw transcript from Whisper and a simplified summary.
@@ -254,8 +254,8 @@ A: In most cases this is an environment configuration issue rather than a code b
 - Install FFmpeg: `brew install ffmpeg` (macOS) / `sudo apt install ffmpeg` (Debian/Ubuntu)
 - If port 8000 is occupied, stop the old process or change `PORT`
 
-### Q: How to handle long videos?
-A: The system can process videos of any length, but processing time will increase accordingly. For very long videos, consider using smaller Whisper models.
+### Q: How to handle long audio/video?
+A: The system can process audio and videos of any length, but processing time will increase accordingly. For very long content, consider using smaller Whisper models.
 
 ### Q: How to use Docker for deployment?
 A: Docker provides the easiest deployment method:

@@ -13,12 +13,14 @@ import aiofiles
 import uuid
 import json
 import re
+from urllib.parse import urlparse
 
 from video_processor import VideoProcessor
 from transcriber import Transcriber
 from summarizer import Summarizer
 from translator import Translator
-from media_source import MediaSource, resolve_media_source
+from media_source import MediaSource, resolve_media_source, AUDIO_EXTENSIONS
+from podcast_resolver import resolve_podcast_episode
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -245,7 +247,7 @@ async def process_video(
     summary_language: str = Form(default="zh")
 ):
     """
-    处理视频链接，返回任务ID
+    处理视频或播客链接，返回任务ID
     """
     try:
         # 检查是否已经在处理相同的URL
@@ -271,7 +273,7 @@ async def process_video(
         tasks[task_id] = {
             "status": "processing",
             "progress": 0,
-            "message": "开始处理视频...",
+            "message": f"开始处理{media_source.display_name}...",
             "script": None,
             "summary": None,
             "error": None,
@@ -315,7 +317,7 @@ async def process_video_task(task_id: str, url: str, summary_language: str, medi
         Exception: 任意处理阶段失败时抛出并记录。
     """
     try:
-        # 立即更新状态：开始下载视频
+        # 立即更新状态：开始下载媒体
         tasks[task_id].update({
             "status": "processing",
             "progress": 10,
@@ -328,27 +330,63 @@ async def process_video_task(task_id: str, url: str, summary_language: str, medi
         import asyncio
         await asyncio.sleep(0.1)
         
-        # 更新状态：正在解析视频信息
+        # 更新状态：正在解析媒体信息
         tasks[task_id].update({
             "progress": 15,
-            "message": "正在解析视频信息..."
+            "message": "正在解析媒体信息..."
         })
         _persist_task(task_id)
         await broadcast_task_update(task_id, tasks[task_id])
-        
-        # 下载并转换视频
-        audio_path, video_title, media_info = await video_processor.download_and_convert(url, TEMP_DIR)
+
+        resolved_url = url
+        episode_info = None
+
+        if media_source.content_type == "podcast":
+            tasks[task_id].update({
+                "progress": 18,
+                "message": "正在解析播客音频..."
+            })
+            _persist_task(task_id)
+            await broadcast_task_update(task_id, tasks[task_id])
+            try:
+                episode_info = await asyncio.to_thread(resolve_podcast_episode, url)
+                resolved_url = episode_info.audio_url
+            except Exception as exc:
+                parsed_path = (urlparse(url).path or "").lower()
+                suffix = Path(parsed_path).suffix
+                is_audio_or_feed = (
+                    suffix in AUDIO_EXTENSIONS
+                    or suffix in {".rss", ".xml"}
+                    or "rss" in parsed_path
+                    or "feed" in parsed_path
+                )
+                if is_audio_or_feed:
+                    raise Exception(f"播客链接解析失败: {exc}") from exc
+                logger.warning(f"播客链接解析失败，尝试使用原始链接继续: {exc}")
+
+        # 下载并转换媒体音频
+        audio_path, video_title, media_info = await video_processor.download_and_convert(resolved_url, TEMP_DIR)
+        media_title = episode_info.title if episode_info and episode_info.title else video_title
+        if not media_title:
+            media_title = "untitled"
         
         # 下载完成，更新状态
         meta_payload = {
             "content_type": media_source.content_type,
             "provider": media_source.provider,
             "media_display_name": media_source.display_name,
-            "webpage_url": media_info.get("webpage_url") or url,
+            "webpage_url": media_info.get("webpage_url") or (episode_info.episode_url if episode_info else url) or url,
             "thumbnail": media_info.get("thumbnail"),
             "uploader": media_info.get("uploader"),
-            "source_title": media_info.get("fulltitle") or video_title,
+            "source_title": media_info.get("fulltitle") or media_title,
         }
+        if episode_info:
+            meta_payload.update({
+                "episode_url": episode_info.episode_url,
+                "feed_url": episode_info.feed_url,
+                "audio_url": episode_info.audio_url,
+                "audio_mime_type": episode_info.mime_type,
+            })
 
         tasks[task_id].update({
             "progress": 35,
@@ -369,10 +407,11 @@ async def process_video_task(task_id: str, url: str, summary_language: str, medi
         # 转录音频
         raw_script = await transcriber.transcribe(audio_path)
 
+        short_id = task_id.replace("-", "")[:6]
+        safe_title = _sanitize_title_for_filename(media_title)
+
         # 将Whisper原始转录保存为Markdown文件，供下载/归档
         try:
-            short_id = task_id.replace("-", "")[:6]
-            safe_title = _sanitize_title_for_filename(video_title)
             raw_md_filename = f"raw_{safe_title}_{short_id}.md"
             raw_md_path = TEMP_DIR / raw_md_filename
             with open(raw_md_path, "w", encoding="utf-8") as f:
@@ -400,7 +439,7 @@ async def process_video_task(task_id: str, url: str, summary_language: str, medi
         script = await summarizer.optimize_transcript(raw_script)
         
         # 为转录文本添加标题，并在结尾添加来源链接
-        script_with_title = f"# {video_title}\n\n{script}\n\nsource: {url}\n"
+        script_with_title = f"# {media_title}\n\n{script}\n\nsource: {url}\n"
         
         # 检查是否需要翻译
         detected_language = transcriber.get_detected_language(raw_script)
@@ -422,7 +461,7 @@ async def process_video_task(task_id: str, url: str, summary_language: str, medi
             
             # 翻译转录文本
             translation_content = await translator.translate_text(script, summary_language, detected_language)
-            translation_with_title = f"# {video_title}\n\n{translation_content}\n\nsource: {url}\n"
+            translation_with_title = f"# {media_title}\n\n{translation_content}\n\nsource: {url}\n"
             
             # 保存翻译到文件
             translation_filename = f"translation_{safe_title}_{short_id}.md"
@@ -441,7 +480,7 @@ async def process_video_task(task_id: str, url: str, summary_language: str, medi
         await broadcast_task_update(task_id, tasks[task_id])
         
         # 生成摘要
-        summary = await summarizer.summarize(script, summary_language, video_title)
+        summary = await summarizer.summarize(script, summary_language, media_title)
         summary_with_source = summary + f"\n\nsource: {url}\n"
         
         # 保存优化后的转录文本到文件
@@ -472,7 +511,7 @@ async def process_video_task(task_id: str, url: str, summary_language: str, medi
             "status": "completed",
             "progress": 100,
             "message": "处理完成！",
-            "video_title": video_title,
+            "video_title": media_title,
             "script": script_with_title,
             "summary": summary_with_source,
             "script_path": str(script_path),

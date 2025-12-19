@@ -1,10 +1,10 @@
 <div align="center">
 
-# AI视频转录器
+# AI视频/播客转录器
 
 中文 | [English](README.md)
 
-一款开源的AI视频转录和摘要工具，支持YouTube、Bilibili、抖音等30+平台。
+一款开源的AI视频/播客转录和摘要工具，支持YouTube、Bilibili、抖音等30+平台与播客RSS音频。
 
 ![Interface](cn-video.png)
 
@@ -12,7 +12,7 @@
 
 ## ✨ 功能特性
 
-- 🎥 **多平台支持**: 支持YouTube、Bilibili、抖音等30+平台。
+- 🎥 **多平台支持**: 支持YouTube、Bilibili、抖音等30+平台与播客RSS音频链接。
 - 🗣️ **智能转录**: 使用Faster-Whisper模型进行高精度语音转文字
 - 🤖 **AI文本优化**: 自动错别字修正、句子完整化和智能分段
 - 🌍 **多语言摘要**: 支持多种语言的智能摘要生成
@@ -157,11 +157,11 @@ python3 start.py --prod
 
 ## 📖 使用指南
 
-1. **输入视频链接**: 在输入框中粘贴YouTube、Bilibili等平台的视频链接
+1. **输入视频/播客链接**: 在输入框中粘贴YouTube、Bilibili或播客RSS/音频链接
 2. **选择摘要语言**: 选择希望生成摘要的语言
 3. **开始处理**: 点击"开始"按钮
 4. **监控进度**: 观察实时处理进度，包含多个阶段：
-   - 视频下载和解析
+   - 媒体下载和解析
    - 使用Faster-Whisper进行音频转录
    - AI智能转录优化（错别字修正、句子完整化、智能分段）
    - 生成选定语言的AI摘要
@@ -173,7 +173,7 @@ python3 start.py --prod
 
 ### 后端技术栈
 - **FastAPI**: 现代化的Python Web框架
-- **yt-dlp**: 视频下载和处理
+- **yt-dlp**: 视频/音频下载和处理
 - **Faster-Whisper**: 高效的语音转录
 - **OpenAI API**: 智能文本摘要
 
@@ -188,7 +188,7 @@ python3 start.py --prod
 AI-Video-Transcriber/
 ├── backend/                 # 后端代码
 │   ├── main.py             # FastAPI主应用
-│   ├── video_processor.py  # 视频处理模块
+│   ├── video_processor.py  # 媒体处理模块
 │   ├── transcriber.py      # 转录模块
 │   ├── summarizer.py       # 摘要模块
 │   └── translator.py       # 翻译模块
@@ -233,10 +233,10 @@ AI-Video-Transcriber/
 ## 🔧 常见问题
 
 ### Q: 为什么转录速度很慢？
-A: 转录速度取决于视频长度、Whisper模型大小和硬件性能。可以尝试使用更小的模型（如tiny或base）来提高速度。
+A: 转录速度取决于音频/视频长度、Whisper模型大小和硬件性能。可以尝试使用更小的模型（如tiny或base）来提高速度。
 
-### Q: 支持哪些视频平台？
-A: 支持所有yt-dlp支持的平台，包括但不限于：YouTube、抖音、Bilibili、优酷、爱奇艺、腾讯视频等。
+### Q: 支持哪些平台？
+A: 支持所有yt-dlp支持的平台，同时支持播客RSS与音频直链，包括但不限于：YouTube、抖音、Bilibili、优酷、爱奇艺、腾讯视频等。
 
 ### Q: AI优化功能不可用怎么办？
 A: 转录优化和摘要生成都需要OpenAI API密钥。如果未配置，系统会提供Whisper的原始转录和简化版摘要。
@@ -250,8 +250,8 @@ A: 多数情况下是环境配置问题，请按以下清单排查：
 - 是否已安装 FFmpeg：macOS `brew install ffmpeg` / Debian/Ubuntu `sudo apt install ffmpeg`
 - 8000 端口是否被占用；如被占用请关闭旧进程或更换端口
 
-### Q: 如何处理长视频？
-A: 系统可以处理任意长度的视频，但处理时间会相应增加。建议对于超长视频使用较小的Whisper模型。
+### Q: 如何处理长音频/视频？
+A: 系统可以处理任意长度的音频/视频，但处理时间会相应增加。建议对于超长内容使用较小的Whisper模型。
 
 ### Q: 如何使用Docker部署？
 A: Docker提供了最简单的部署方式：
@@ -403,7 +403,7 @@ docker pull hello-world
 
 ## 致谢
 
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp) - 强大的视频下载工具
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) - 强大的视频/音频下载工具
 - [Faster-Whisper](https://github.com/guillaumekln/faster-whisper) - 高效的Whisper实现
 - [FastAPI](https://fastapi.tiangolo.com/) - 现代化的Python Web框架
 - [OpenAI](https://openai.com/) - 智能文本处理API

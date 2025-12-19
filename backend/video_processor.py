@@ -8,7 +8,7 @@ from typing import Optional, Tuple, Dict, Any
 logger = logging.getLogger(__name__)
 
 class VideoProcessor:
-    """视频处理器，使用yt-dlp下载和转换视频"""
+    """媒体处理器，使用yt-dlp下载并转换音频"""
     
     def __init__(self):
         self.ydl_opts = {
@@ -42,7 +42,7 @@ class VideoProcessor:
     
     async def download_and_convert(self, url: str, output_dir: Path) -> Tuple[str, str, Dict[str, Any]]:
         """
-        下载视频并转换为m4a格式
+        下载媒体并转换为m4a格式
         
         Args:
             url (str): 视频或音频链接。
@@ -67,19 +67,19 @@ class VideoProcessor:
             ydl_opts = self.ydl_opts.copy()
             ydl_opts['outtmpl'] = output_template
             
-            logger.info(f"开始下载视频: {url}")
+            logger.info(f"开始下载媒体: {url}")
             
             # 直接同步执行，不使用线程池
             # 在FastAPI中，IO密集型操作可以直接await
             import asyncio
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                # 获取视频信息（放到线程池避免阻塞事件循环）
+                # 获取媒体信息（放到线程池避免阻塞事件循环）
                 info = await asyncio.to_thread(ydl.extract_info, url, False)
                 video_title = info.get('title', 'unknown')
                 expected_duration = info.get('duration') or 0
-                logger.info(f"视频标题: {video_title}")
+                logger.info(f"媒体标题: {video_title}")
                 
-                # 下载视频（放到线程池避免阻塞事件循环）
+                # 下载媒体（放到线程池避免阻塞事件循环）
                 await asyncio.to_thread(ydl.download, [url])
             
             # 查找生成的m4a文件

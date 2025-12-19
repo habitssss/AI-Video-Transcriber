@@ -27,10 +27,10 @@ class VideoTranscriber {
         
         this.translations = {
             en: {
-                title: "AI Video Transcriber",
-                subtitle: "Supports automatic transcription and AI summary for YouTube, Tiktok, Bilibili and other platforms",
-                video_url: "Video URL",
-                video_url_placeholder: "Enter YouTube, Tiktok, Bilibili or other platform video URLs...",
+                title: "AI Video & Podcast Transcriber",
+                subtitle: "Supports automatic transcription and AI summary for videos, podcasts, and RSS audio links",
+                video_url: "Video/Podcast URL",
+                video_url_placeholder: "Enter YouTube, Spotify, RSS, or other video/podcast URLs...",
                 summary_language: "Summary Language",
                 start_transcription: "Start",
                 processing_progress: "Processing Progress",
@@ -42,7 +42,7 @@ class VideoTranscriber {
                 transcript_text: "Transcript Text",
                 translation: "Translation",
                 intelligent_summary: "AI Summary",
-                footer_text: "Powered by AI, supports multi-platform video transcription",
+                footer_text: "Powered by AI, supports multi-platform video and podcast transcription",
                 processing: "Processing...",
                 downloading_video: "Downloading video...",
                 parsing_video: "Parsing video info...",
@@ -50,7 +50,7 @@ class VideoTranscriber {
                 optimizing_transcript: "Optimizing transcript...",
                 generating_summary: "Generating summary...",
                 completed: "Processing completed!",
-                error_invalid_url: "Please enter a valid video URL",
+                error_invalid_url: "Please enter a valid video or podcast URL",
                 error_processing_failed: "Processing failed: ",
                 error_task_not_found: "Task not found",
                 error_task_not_completed: "Task not completed yet",
@@ -73,13 +73,13 @@ class VideoTranscriber {
                 history_finished_at: "Finished At",
                 history_language_label: "Language",
                 history_has_translation: "With Translation",
-                history_no_title: "Untitled Video"
+                history_no_title: "Untitled Media"
             },
             zh: {
-                title: "AI视频转录器",
-                subtitle: "支持YouTube、Tiktok、Bilibili等平台的视频自动转录和智能摘要",
-                video_url: "视频链接",
-                video_url_placeholder: "请输入YouTube、Tiktok、Bilibili等平台的视频链接...",
+                title: "AI视频/播客转录器",
+                subtitle: "支持视频、播客与RSS音频链接的自动转录和智能摘要",
+                video_url: "视频/播客链接",
+                video_url_placeholder: "请输入YouTube、Bilibili、播客RSS或音频链接...",
                 summary_language: "摘要语言",
                 start_transcription: "开始转录",
                 processing_progress: "处理进度",
@@ -91,7 +91,7 @@ class VideoTranscriber {
                 transcript_text: "转录文本",
                 translation: "翻译",
                 intelligent_summary: "智能摘要",
-                footer_text: "由AI驱动，支持多平台视频转录",
+                footer_text: "由AI驱动，支持多平台视频与播客转录",
                 processing: "处理中...",
                 downloading_video: "正在下载视频...",
                 parsing_video: "正在解析视频信息...",
@@ -99,7 +99,7 @@ class VideoTranscriber {
                 optimizing_transcript: "正在优化转录文本...",
                 generating_summary: "正在生成摘要...",
                 completed: "处理完成！",
-                error_invalid_url: "请输入有效的视频链接",
+                error_invalid_url: "请输入有效的视频或播客链接",
                 error_processing_failed: "处理失败: ",
                 error_task_not_found: "任务不存在",
                 error_task_not_completed: "任务尚未完成",
@@ -122,7 +122,7 @@ class VideoTranscriber {
                 history_finished_at: "完成时间",
                 history_language_label: "语言",
                 history_has_translation: "含翻译内容",
-                history_no_title: "未命名视频"
+                history_no_title: "未命名内容"
             }
         };
         
@@ -1209,13 +1209,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const urlInput = document.getElementById('videoUrl');
     urlInput.addEventListener('focus', () => {
         if (!urlInput.value) {
-            urlInput.placeholder = '例如: https://www.youtube.com/watch?v=... 或 https://www.bilibili.com/video/...';
+            urlInput.placeholder = '例如: https://www.youtube.com/watch?v=... 或 https://www.bilibili.com/video/... 或 https://example.com/podcast.rss';
         }
     });
     
     urlInput.addEventListener('blur', () => {
         if (!urlInput.value) {
-            urlInput.placeholder = '请输入YouTube、Bilibili等平台的视频链接...';
+            urlInput.placeholder = '请输入YouTube、Bilibili、播客RSS或音频链接...';
         }
     });
 });
